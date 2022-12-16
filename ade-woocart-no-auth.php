@@ -6,7 +6,7 @@
  * Author:      Adeleye Ayodeji
  * Author URI:  http://www.adeleyeayodeji.com
  * Description: A simple plugin to add a cart to your website
- * Version:     0.1.0
+ * Version:     1.0.0
  * License:     GPL-2.0+
  * License URL: http://www.gnu.org/licenses/gpl-2.0.txt
  * text-domain: ade-woocart-no-auth

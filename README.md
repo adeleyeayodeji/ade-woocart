@@ -12,8 +12,6 @@ This plugin helps you to create a cart for your WooCommerce store through API.
 
 3. Use the Settings->Ade Woocart screen to configure the plugin
 
-# Frequently Asked Questions
-
 ## How to use this plugin?
 
 1. Add a cart
