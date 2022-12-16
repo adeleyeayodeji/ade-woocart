@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: Ade WooCart
+ * Plugin Name: Ade WooCart No Auth
  * Plugin URI:  http://www.adeleyeayodeji.com
  * Author:      Adeleye Ayodeji
  * Author URI:  http://www.adeleyeayodeji.com
@@ -9,7 +9,7 @@
  * Version:     0.1.0
  * License:     GPL-2.0+
  * License URL: http://www.gnu.org/licenses/gpl-2.0.txt
- * text-domain: ade-woocart
+ * text-domain: ade-woocart-no-auth
  */
 
 // If this file is called directly, abort.
@@ -18,4 +18,4 @@ if (!defined('WPINC')) {
 }
 
 // Include the main class
-require_once plugin_dir_path(__FILE__) . 'includes/class-ade-woocart.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-ade-woocart-no-auth.php';

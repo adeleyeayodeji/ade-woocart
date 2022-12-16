@@ -1,8 +1,10 @@
 <?php
-class AdeWooCart
+// Exit if accessed directly.
+if (!defined('ABSPATH')) {
+    exit;
+}
+class AdeWooCartNoAuth
 {
-    public $user;
-
     public function init()
     {
         //rest api init
@@ -11,20 +13,20 @@ class AdeWooCart
 
     public function register_routes()
     {
-        register_rest_route('ade-woocart/v1', '/cart', array(
+        register_rest_route('ade-woocart-no-auth/v1', '/cart', array(
             'methods' => 'GET',
             'callback' => array($this, 'get_cart'),
             'permission_callback' => array($this, 'permissions_check'),
         ));
 
-        register_rest_route('ade-woocart/v1', '/cart', array(
+        register_rest_route('ade-woocart-no-auth/v1', '/cart', array(
             'methods' => 'POST',
             'callback' => array($this, 'add_to_cart'),
             'permission_callback' => array($this, 'permissions_check'),
         ));
 
         //remove from cart
-        register_rest_route('ade-woocart/v1', '/cart/(?P<key>\w+)', array(
+        register_rest_route('ade-woocart-no-auth/v1', '/cart', array(
             'methods' => 'DELETE',
             'callback' => array($this, 'remove_from_cart'),
             'permission_callback' => array($this, 'permissions_check'),
@@ -68,64 +70,15 @@ class AdeWooCart
         return true;
     }
 
-    //user data
-    private function get_user_data_by_consumer_key($consumer_key)
-    {
-        global $wpdb;
-
-        $consumer_key = wc_api_hash(sanitize_text_field($consumer_key));
-        $user         = $wpdb->get_row(
-            $wpdb->prepare(
-                "
-			SELECT key_id, user_id, permissions, consumer_key, consumer_secret, nonces
-			FROM {$wpdb->prefix}woocommerce_api_keys
-			WHERE consumer_key = %s
-		",
-                $consumer_key
-            )
-        );
-
-        return $user;
-    }
-
-    //authenticate
-    public function wooAuth($consumer_key, $consumer_secret)
-    {
-        // Stop if don't have any key.
-        if (!$consumer_key || !$consumer_secret) {
-            return false;
-        }
-
-        // Get user data.
-        $this->user = $this->get_user_data_by_consumer_key($consumer_key);
-        if (empty($this->user)) {
-            return false;
-        }
-
-        // Validate user secret.
-        if (!hash_equals($this->user->consumer_secret, $consumer_secret)) { // @codingStandardsIgnoreLine
-            return false;
-        }
-
-        //log user
-        $this->logUser();
-
-        return true;
-    }
-
     //permissions_check
     public function permissions_check()
     {
-        $wc_ck = $_SERVER['PHP_AUTH_USER'];
-        $wc_cs = $_SERVER['PHP_AUTH_PW'];
-        //validate the credentials
-        return $this->wooAuth($wc_ck, $wc_cs);
+        return true;
     }
 
     //logUser
-    public function logUser()
+    public function logUser($user_id)
     {
-        $user_id = $this->user->user_id;
         $user = get_user_by('id', $user_id);
         //if not logged in
         if (!is_user_logged_in()) {
@@ -135,8 +88,16 @@ class AdeWooCart
         $this->check_woo_files();
     }
 
-    public function get_cart()
+    public function get_cart($request)
     {
+        $user_id = $request->get_param('user_id');
+        //check if user exists
+        if (!get_user_by('id', $user_id)) {
+            return new WP_Error('user_not_found', 'User not found', array('status' => 404));
+        }
+        //log user
+        $this->logUser($user_id);
+        //get cart
         $cart = WC()->cart->get_cart();
         //loop through cart
         $cart_data = [];
@@ -158,6 +119,15 @@ class AdeWooCart
     {
         $product_id = $request->get_param('product_id');
         $quantity = $request->get_param('quantity');
+        $user_id = $request->get_param('user_id');
+
+        //check if user exists
+        if (!get_user_by('id', $user_id)) {
+            return new WP_Error('user_not_found', 'User not found', array('status' => 404));
+        }
+
+        //log user
+        $this->logUser($user_id);
 
         //check if product exists
         if (!wc_get_product($product_id)) {
@@ -167,13 +137,21 @@ class AdeWooCart
         //add to cart
         WC()->cart->add_to_cart($product_id, $quantity);
 
-        return $this->get_cart();
+        return $this->get_cart($request);
     }
 
     //remove_from_cart
     public function remove_from_cart(WP_REST_Request $request)
     {
-        $key = $request->get_param('key');
+        $key = $request->get_param('cart_key');
+        $user_id = $request->get_param('user_id');
+        //check if user exists
+        if (!get_user_by('id', $user_id)) {
+            return new WP_Error('user_not_found', 'User not found', array('status' => 404));
+        }
+        //log user
+        $this->logUser($user_id);
+
         //confirm key exists
         if (!isset(WC()->cart->cart_contents[$key])) {
             return new WP_Error('key_not_found', 'Key not found', array('status' => 404));
@@ -181,11 +159,11 @@ class AdeWooCart
         WC()->cart->remove_cart_item($key);
         return new WP_REST_Response([
             'message' => 'Item removed from cart',
-            'cart' => $this->get_cart(),
+            'cart' => $this->get_cart($request),
         ], 200);
     }
 }
 
 //init
-$ade_woo_cart = new AdeWooCart();
+$ade_woo_cart = new AdeWooCartNoAuth();
 $ade_woo_cart->init();
