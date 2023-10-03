@@ -17,7 +17,7 @@ This plugin helps you to create a cart for your WooCommerce store through API.
 ## How to use this plugin?
 
 1. Add a cart
-   - Endpoint: `http://yourdomain.com/wp-json/ade-woocart/v1/cart`
+   - Endpoint: `http://yourdomain.com/wp-json/ade-woocart/v1/cart?user_email=adeleyeayodeji@gmail.com`
    - Method: `POST`
    - Body:
    ```json
@@ -57,7 +57,7 @@ This plugin helps you to create a cart for your WooCommerce store through API.
    ```
 2. Get cart
 
-   - Endpoint: `http://yourdomain.com/wp-json/ade-woocart/v1/cart`
+   - Endpoint: `http://yourdomain.com/wp-json/ade-woocart/v1/cart?user_email=adeleyeayodeji@gmail.com`
    - Method: `GET`
    - Response:
 
@@ -83,7 +83,7 @@ This plugin helps you to create a cart for your WooCommerce store through API.
    ```
 
 3. Delete a cart
-   - Endpoint: `http://yourdomain.com/wp-json/ade-woocart/v1/cart/{cart_key}`
+   - Endpoint: `http://yourdomain.com/wp-json/ade-woocart/v1/cart/{cart_key}?user_email=adeleyeayodeji@gmail.com`
    - Method: `DELETE`
    - Response:
    ```json
