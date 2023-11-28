@@ -27,49 +27,26 @@ class AdeWooCart
             'permission_callback' => array($this, 'permissions_check'),
         ));
 
+        //update cart
+        register_rest_route('ade-woocart/v1', '/cart/update', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'update_cart'),
+            'permission_callback' => array($this, 'permissions_check'),
+        ));
+
         //remove from cart
-        register_rest_route('ade-woocart/v1', '/cart/(?P<key>\w+)', array(
-            'methods' => 'DELETE',
+        register_rest_route('ade-woocart/v1', '/cart/delete', array(
+            'methods' => 'POST',
             'callback' => array($this, 'remove_from_cart'),
             'permission_callback' => array($this, 'permissions_check'),
         ));
-    }
 
-    //woo support
-    public function check_woo_files()
-    {
-        if (defined('WC_ABSPATH')) {
-            // WC 3.6+ - Cart and other frontend functions are not included for REST requests.
-            include_once WC_ABSPATH . 'includes/wc-cart-functions.php';
-            include_once WC_ABSPATH . 'includes/wc-notice-functions.php';
-            include_once WC_ABSPATH . 'includes/wc-template-hooks.php';
-        }
-
-        if (
-            null === WC()->session
-        ) {
-            $session_class = apply_filters('woocommerce_session_handler', 'WC_Session_Handler');
-
-            WC()->session = new $session_class();
-            WC()->session->init();
-        }
-
-        if (
-            null === WC()->customer
-        ) {
-            WC()->customer = new WC_Customer(get_current_user_id(), true);
-        }
-
-        if (
-            null === WC()->cart
-        ) {
-            WC()->cart = new WC_Cart();
-
-            // We need to force a refresh of the cart contents from session here (cart contents are normally refreshed on wp_loaded, which has already happened by this point).
-            WC()->cart->get_cart();
-        }
-
-        return true;
+        //remove_all
+        register_rest_route('ade-woocart/v1', '/cart/delete/all', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'remove_all'),
+            'permission_callback' => array($this, 'permissions_check'),
+        ));
     }
 
     //user data
@@ -101,13 +78,13 @@ class AdeWooCart
         }
 
         // Get user data.
-        $this->user = $this->get_user_data_by_consumer_key($consumer_key);
-        if (empty($this->user)) {
+        $user = $this->get_user_data_by_consumer_key($consumer_key);
+        if (empty($user)) {
             return false;
         }
 
         // Validate user secret.
-        if (!hash_equals($this->user->consumer_secret, $consumer_secret)) { // @codingStandardsIgnoreLine
+        if (!hash_equals($user->consumer_secret, $consumer_secret)) { // @codingStandardsIgnoreLine
             return false;
         }
 
@@ -130,26 +107,50 @@ class AdeWooCart
     public function logUser()
     {
         //get $_get 'user_email'
-        $user_id = sanitize_email($_GET['username']);
+        $username = sanitize_text_field(filter_input(INPUT_GET, 'username', FILTER_SANITIZE_STRING));
 
         //if empty
-        if (empty($user_id)) {
-            return new WP_Error('user_not_found', 'User not found, enter valid username', array('status' => 404));
+        if (empty($username)) {
+            return new WP_REST_Response([
+                'message' => 'Username is required',
+                'status' => 'error',
+            ], 200);
         }
 
-        $user = get_user_by('login', $user_id);
+        $user = get_user_by('login', $username);
+
+        $this->user = $user;
 
         //if not logged in
         if (!is_user_logged_in()) {
-            wp_set_current_user($user_id, $user->user_login);
-            wp_set_auth_cookie($user_id);
+            wp_set_current_user($user->ID, $user->user_login);
+            wp_set_auth_cookie($user->ID);
         }
-        $this->check_woo_files();
     }
 
     public function get_cart()
     {
+        //check if class exists
+        if (!class_exists('WC_Cart')) {
+            return new WP_REST_Response([
+                'message' => 'WooCommerce is not installed',
+                'status' => 'error',
+            ], 200);
+        }
         $cart = WC()->cart->get_cart();
+        //get current user ip
+        $user_ip = $_SERVER['REMOTE_ADDR'];
+        //check if cart is empty
+        if (empty($cart)) {
+            return new WP_REST_Response(array(
+                'username' => $this->user->user_login,
+                'message' => 'Cart is empty',
+                'data' => $user_ip,
+                'time' => current_time('mysql'),
+                'cart_count' => 0,
+                'cart_items' => [],
+            ), 200);
+        }
         //loop through cart
         $cart_data = [];
         foreach ($cart as $key => $value) {
@@ -163,7 +164,14 @@ class AdeWooCart
                 'quantity' => $value['quantity'],
             );
         }
-        return $cart_data;
+        return new WP_REST_Response(array(
+            'username' => $this->user->user_login,
+            'message' => 'Cart items',
+            'data' => $user_ip,
+            'time' => current_time('mysql'),
+            'cart_count' => count($cart_data),
+            'cart_items' => $cart_data,
+        ), 200);
     }
 
     public function add_to_cart(WP_REST_Request $request)
@@ -173,27 +181,115 @@ class AdeWooCart
 
         //check if product exists
         if (!wc_get_product($product_id)) {
-            return new WP_Error('product_not_found', 'Product not found', array('status' => 404));
+            return new WP_REST_Response([
+                'message' => 'Product not found',
+                'status' => 'error',
+            ], 200);
         }
 
         //add to cart
         WC()->cart->add_to_cart($product_id, $quantity);
 
-        return $this->get_cart();
+        //calculate totals
+        WC()->cart->calculate_totals();
+
+        return new WP_REST_Response([
+            'message' => 'Item added to cart',
+            'status' => 'success',
+            'data' => [
+                'product_id' => $product_id,
+                'quantity' => $quantity,
+                'username' => $this->user->user_login,
+            ]
+        ], 200);
+    }
+
+    /**
+     * Get Cart Key by Product ID
+     */
+    public function get_cart_key_by_product_id($product_id)
+    {
+        $cart = WC()->cart->get_cart();
+        foreach ($cart as $key => $value) {
+            if ($value['product_id'] == $product_id) {
+                return $key;
+            }
+        }
+        return false;
+    }
+
+    //update_cart
+    public function update_cart(WP_REST_Request $request)
+    {
+        $product_id = $request->get_param('product_id');
+        $quantity = $request->get_param('quantity');
+
+        //check if product exists
+        if (!wc_get_product($product_id)) {
+            return new WP_REST_Response([
+                'message' => 'Product not found',
+                'status' => 'error',
+            ], 200);
+        }
+
+        $product_key = $this->get_cart_key_by_product_id($product_id);
+
+        //update cart
+        WC()->cart->set_quantity($product_key, $quantity);
+
+        return new WP_REST_Response([
+            'message' => 'Item updated',
+            'status' => 'success',
+            'data' => [
+                'product_id' => $product_id,
+                'quantity' => $quantity,
+                'username' => $this->user->user_login,
+            ]
+        ], 200);
     }
 
     //remove_from_cart
     public function remove_from_cart(WP_REST_Request $request)
     {
-        $key = $request->get_param('key');
-        //confirm key exists
-        if (!isset(WC()->cart->cart_contents[$key])) {
-            return new WP_Error('key_not_found', 'Key not found', array('status' => 404));
+        $product_id = $request->get_param('product_id');
+
+        //check if product exists
+        if (!wc_get_product($product_id)) {
+            return new WP_REST_Response([
+                'message' => 'Product not found',
+                'status' => 'error',
+            ], 200);
         }
-        WC()->cart->remove_cart_item($key);
+
+        $product_key = $this->get_cart_key_by_product_id($product_id);
+
+        //remove from cart
+        WC()->cart->remove_cart_item($product_key);
+
         return new WP_REST_Response([
-            'message' => 'Item removed from cart',
-            'cart' => $this->get_cart(),
+            'message' => 'Item removed',
+            'status' => 'success',
+            'data' => [
+                'product_id' => $product_id,
+                'username' => $this->user->user_login,
+            ]
+        ], 200);
+    }
+
+    /**
+     * remove_all
+     */
+    public function remove_all()
+    {
+        //remove all
+        WC()->cart->empty_cart();
+
+        return new WP_REST_Response([
+            'message' => 'Cart emptied',
+            'status' => 'success',
+            'data' => [
+                'username' => $this->user->user_login,
+            ]
         ], 200);
     }
 }
